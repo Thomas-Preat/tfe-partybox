@@ -40,8 +40,20 @@ struct ToneControlState {
   uint8_t treble = 128;
 };
 
+// Subclass that prevents the library from deactivating I2S on pause/stop,
+// which would cause a loud transient on the amplifier output.
+class NeverStopA2DPSink : public BluetoothA2DPSink {
+public:
+  NeverStopA2DPSink(audio_tools::AudioStream &output) : BluetoothA2DPSink(output) {}
+protected:
+  void set_i2s_active(bool active) override {
+    // Always keep I2S running; only allow explicit activation.
+    BluetoothA2DPSink::set_i2s_active(true);
+  }
+};
+
 I2SStream i2s;
-BluetoothA2DPSink a2dp_sink(i2s);
+NeverStopA2DPSink a2dp_sink(i2s);
 Adafruit_NeoPixel pixels(NUMPIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 double vReal[SAMPLES];
@@ -73,11 +85,35 @@ const unsigned long BLE_STALE_TIMEOUT_MS = 7000;
 bool pendingRestartAdvertising = false;
 unsigned long restartAdvertisingAtMs = 0;
 
+volatile unsigned long lastAudioPacketMs = 0;
+unsigned long lastSilenceWriteMs = 0;
+
+volatile bool audioStreamActive = false;
+volatile bool holdI2SOnPause = false;
+
+const unsigned long SILENCE_WRITE_INTERVAL_MS = 4;
+
+int16_t silenceBuffer[256] = {0};
+
 const int freqBins[WIDTH + 1] = {
   2, 3, 5, 9, 15, 25, 45, 80, 128
 };
 
 void renderSoundMode();
+
+void onAudioStateChanged(esp_a2d_audio_state_t state, void* ptr) {
+  (void)ptr;
+
+  if (state == ESP_A2D_AUDIO_STATE_STARTED) {
+    audioStreamActive = true;
+    holdI2SOnPause = false;
+    lastAudioPacketMs = millis();
+  } else if (state == ESP_A2D_AUDIO_STATE_REMOTE_SUSPEND ||
+             state == ESP_A2D_AUDIO_STATE_STOPPED) {
+    audioStreamActive = false;
+    holdI2SOnPause = true;
+  }
+}
 
 void configurePwmChannel(uint8_t pin, uint8_t channel) {
   (void)channel;
@@ -144,6 +180,8 @@ class DataCallback : public BLECharacteristicCallbacks {
 };
 
 void audioCallback(const uint8_t* data, uint32_t len) {
+  lastAudioPacketMs = millis();
+
   int16_t* samples = (int16_t*)data;
   int count = len / 2;
 
@@ -386,6 +424,7 @@ void setup() {
   i2s.begin(cfg);
 
   a2dp_sink.set_default_bt_mode(ESP_BT_MODE_BTDM);
+  a2dp_sink.set_on_audio_state_changed(onAudioStateChanged);
   a2dp_sink.start(A2DP_DEVICE_NAME);
   a2dp_sink.set_stream_reader(audioCallback);
 
@@ -408,9 +447,12 @@ void setup() {
   BLEDevice::startAdvertising();
 
   lastBlePacketMs = millis();
+  lastAudioPacketMs = millis();
 }
 
 void loop() {
+  unsigned long now = millis();
+
   if (!deviceConnected && oldDeviceConnected) {
     oldDeviceConnected = deviceConnected;
   }
@@ -429,6 +471,13 @@ void loop() {
     pendingRestartAdvertising = true;
     restartAdvertisingAtMs = millis() + 1500;
     lastBlePacketMs = millis();
+  }
+
+  // Keep writing digital silence while paused so data lines don't float.
+  if (holdI2SOnPause && !audioStreamActive &&
+      (now - lastSilenceWriteMs) >= SILENCE_WRITE_INTERVAL_MS) {
+    i2s.write((uint8_t*)silenceBuffer, sizeof(silenceBuffer));
+    lastSilenceWriteMs = now;
   }
 
   if (category == 1) {
