@@ -10,8 +10,8 @@
 #include <arduinoFFT.h>
 
 #define LED_PIN 5
-#define WIDTH 8
-#define HEIGHT 4
+#define WIDTH 12
+#define HEIGHT 6
 #define NUMPIXELS (WIDTH * HEIGHT)
 
 #define SAMPLES 256
@@ -379,10 +379,10 @@ void setup() {
   applyToneControls();
 
   auto cfg = i2s.defaultConfig();
-  cfg.pin_bck = 14;
+  cfg.pin_bck = 18;
   cfg.pin_ws = 15;
   cfg.pin_data = 22;
-  cfg.pin_mck = 0;
+  cfg.pin_mck = 1;
   i2s.begin(cfg);
 
   a2dp_sink.set_default_bt_mode(ESP_BT_MODE_BTDM);
