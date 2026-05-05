@@ -34,6 +34,9 @@ constexpr uint8_t TREBLE_PWM_CHANNEL = 2;
 constexpr uint16_t PWM_FREQUENCY_HZ = 20000;
 constexpr uint8_t PWM_RESOLUTION_BITS = 8;
 
+// Temporary debug overlay to verify high-band column positions.
+constexpr bool DEBUG_HIGH_COLUMN_MARKERS = true;
+
 struct ToneControlState {
   uint8_t gain = 128;
   uint8_t bass = 128;
@@ -93,13 +96,31 @@ volatile bool holdI2SOnPause = false;
 
 const unsigned long SILENCE_WRITE_INTERVAL_MS = 4;
 
+const double FFT_NOISE_FLOOR = 180.0;
+const double FFT_MAX_LEVEL = 22000.0;
+const double MIN_VOLUME_GAIN = 0.02;
+const double MAX_VOLUME_GAIN = 0.95;
+
+// Per-column weighting to compensate for narrow low-frequency bins and
+// naturally lower bass-bin energy in this FFT resolution.
+const double BAND_EQ[WIDTH] = {
+  2.8, 2.4, 2.1, 1.8, 1.55, 1.35, 1.18, 1.05, 0.98, 0.92, 0.88, 0.84
+};
+
+// Lift the right-side high-frequency columns so highs show more lit LEDs.
+const double HIGH_LED_BOOST[WIDTH] = {
+  1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.12, 1.55, 1.85, 2.10, 2.35, 1.85
+};
+
 int16_t silenceBuffer[256] = {0};
 
 const int freqBins[WIDTH + 1] = {
-  2, 3, 5, 9, 15, 25, 45, 80, 128
+  // WIDTH is 12, so we need 13 edges; keep them monotonic and <= SAMPLES/2.
+  2, 3, 4, 6, 8, 12, 18, 26, 38, 54, 74, 100, 128
 };
 
 void renderSoundMode();
+void overlayHighColumnMarkers();
 
 void onAudioStateChanged(esp_a2d_audio_state_t state, void* ptr) {
   (void)ptr;
@@ -127,6 +148,7 @@ void applyToneControls() {
 }
 
 int XY(int x, int y) {
+  x = (WIDTH - 1) - x;
   if (y % 2 == 0) return y * WIDTH + x;
   return y * WIDTH + (WIDTH - 1 - x);
 }
@@ -234,19 +256,42 @@ void processFFTData() {
   FFT.compute(FFT_FORWARD);
   FFT.complexToMagnitude();
 
+  double volumeNorm = constrain(volume / 100.0, 0.0, 1.0);
+  double volumeGain = MIN_VOLUME_GAIN + pow(volumeNorm, 2.2) * (MAX_VOLUME_GAIN - MIN_VOLUME_GAIN);
+  double logFloor = log10(1.0 + FFT_NOISE_FLOOR);
+  double logCeil = log10(1.0 + FFT_MAX_LEVEL);
+  double logRange = max(0.001, logCeil - logFloor);
+
   for (int x = 0; x < WIDTH; x++) {
     int startBin = freqBins[x];
     int endBin = freqBins[x + 1];
+    int bandWidth = endBin - startBin;
     double value = 0;
     for (int j = startBin; j < endBin; j++) {
       value += vReal[j];
     }
-    value /= (endBin - startBin);
-    value *= (volume / 50.0);
-    if (x == WIDTH - 1 && value < 5) value = 0;
-    value = log10(1 + value);
-    double target = (value / log10(4000)) * HEIGHT;
-    target = constrain(target, 0, HEIGHT);
+    value /= max(1, bandWidth);
+    value *= BAND_EQ[x];
+    value *= volumeGain;
+
+    if (x == WIDTH - 1 && value < 25) value = 0;
+
+    // Map in log space so low-level bands remain visible without clipping highs.
+    double mapped = (log10(1.0 + value) - logFloor) / logRange;
+    mapped = constrain(mapped, 0.0, 1.0);
+    double target = mapped * HEIGHT;
+    target *= HIGH_LED_BOOST[x];
+    target = min((double)HEIGHT, target);
+
+    // Keep 8th..11th columns (1-based) visible at moderate listening volume.
+    if (x >= 7 && x <= 10 && value > FFT_NOISE_FLOOR * 0.25 && target < 0.60) {
+      target = 0.60;
+    }
+
+    // Give the first few low-frequency columns a small visibility floor.
+    if (x <= 3 && value > FFT_NOISE_FLOOR * 0.65 && target < 0.35) {
+      target = 0.35;
+    }
 
     if (target > ledLevels[x]) {
       ledLevels[x] = target;
@@ -286,6 +331,10 @@ void renderRainbowFFT() {
       }
     }
   }
+
+  if (DEBUG_HIGH_COLUMN_MARKERS) {
+    overlayHighColumnMarkers();
+  }
   pixels.show();
 }
 
@@ -311,6 +360,10 @@ void renderGradientFFT() {
       }
     }
   }
+
+  if (DEBUG_HIGH_COLUMN_MARKERS) {
+    overlayHighColumnMarkers();
+  }
   pixels.show();
 }
 
@@ -334,7 +387,19 @@ void renderSolidFFT() {
       }
     }
   }
+
+  if (DEBUG_HIGH_COLUMN_MARKERS) {
+    overlayHighColumnMarkers();
+  }
   pixels.show();
+}
+
+void overlayHighColumnMarkers() {
+  // Mark 8th..11th columns (1-based), i.e. indices 7..10.
+  for (int x = 7; x <= 10; x++) {
+    int topLed = XY(x, 0);
+    pixels.setPixelColor(topLed, pixels.Color(255, 255, 255));
+  }
 }
 
 void renderSoundMode() {

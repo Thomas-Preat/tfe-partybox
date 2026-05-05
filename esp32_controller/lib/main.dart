@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 void main() {
   runApp(const MyApp());
@@ -22,6 +22,7 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
+  final _storage = const FlutterSecureStorage();
   String? pairedDeviceId;
   String? pairedDeviceName;
   bool isLoading = true;
@@ -33,18 +34,18 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _loadPairedDevice() async {
-    final prefs = await SharedPreferences.getInstance();
+    final deviceId = await _storage.read(key: 'paired_device_id');
+    final deviceName = await _storage.read(key: 'paired_device_name');
     setState(() {
-      pairedDeviceId = prefs.getString('paired_device_id');
-      pairedDeviceName = prefs.getString('paired_device_name');
+      pairedDeviceId = deviceId;
+      pairedDeviceName = deviceName;
       isLoading = false;
     });
   }
 
   Future<void> _pairDevice(DiscoveredDevice device) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('paired_device_id', device.id);
-    await prefs.setString('paired_device_name', device.name);
+    await _storage.write(key: 'paired_device_id', value: device.id);
+    await _storage.write(key: 'paired_device_name', value: device.name);
 
     setState(() {
       pairedDeviceId = device.id;
@@ -53,9 +54,8 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _unpairDevice() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('paired_device_id');
-    await prefs.remove('paired_device_name');
+    await _storage.delete(key: 'paired_device_id');
+    await _storage.delete(key: 'paired_device_name');
 
     setState(() {
       pairedDeviceId = null;
@@ -151,7 +151,7 @@ class _PairingPageState extends State<PairingPage> {
 
     scanSub = flutterReactiveBle
         .scanForDevices(
-          withServices: const [], // scan EVERYTHING
+          withServices: [serviceUuid],
           scanMode: ScanMode.lowLatency,
         )
         .listen((device) {
@@ -240,6 +240,8 @@ class DevicePage extends StatefulWidget {
 class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
   StreamSubscription<ConnectionStateUpdate>? connectionSub;
   Timer? keepAliveTimer;
+  Timer? _pendingSend;
+  DateTime? _lastSendTime;
   QualifiedCharacteristic? bleChar;
   DateTime? reconnectAvailableAt;
   String statusMessage = "Disconnected";
@@ -276,6 +278,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
   @override
   void dispose() {
     keepAliveTimer?.cancel();
+    _pendingSend?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     connectionSub?.cancel();
     super.dispose();
@@ -410,14 +413,37 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
     });
   }
 
+  void _scheduleSend() {
+    _pendingSend?.cancel();
+    final now = DateTime.now();
+    final elapsedMs = _lastSendTime == null
+        ? 9999
+        : now.difference(_lastSendTime!).inMilliseconds;
+    if (elapsedMs >= 30) {
+      sendData();
+    } else {
+      _pendingSend = Timer(Duration(milliseconds: 30 - elapsedMs), sendData);
+    }
+  }
+
   Future<void> sendData() async {
     if (!isConnected || bleChar == null) return;
 
+    _lastSendTime = DateTime.now();
+    final cr = r.clamp(0, 255);
+    final cg = g.clamp(0, 255);
+    final cb = b.clamp(0, 255);
+    final cv = volume.clamp(0, 100);
+    final ccat = category.clamp(0, 1);
+    final csub = subMode.clamp(0, 2);
+    final cgain = gain.clamp(0, 255);
+    final cbass = bass.clamp(0, 255);
+    final ctreble = treble.clamp(0, 255);
     int flags = showPeak ? 0x01 : 0x00;
     try {
       await flutterReactiveBle.writeCharacteristicWithResponse(
         bleChar!,
-        value: [category, subMode, r, g, b, volume, flags, gain, bass, treble],
+        value: [ccat, csub, cr, cg, cb, cv, flags, cgain, cbass, ctreble],
       );
     } catch (e) {
       debugPrint("Write error: $e");
@@ -713,7 +739,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
               max: 255,
               onChanged: (v) {
                 setState(() => r = v.toInt());
-                sendData();
+                _scheduleSend();
               },
             ),
 
@@ -724,7 +750,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
               max: 255,
               onChanged: (v) {
                 setState(() => g = v.toInt());
-                sendData();
+                _scheduleSend();
               },
             ),
 
@@ -735,7 +761,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
               max: 255,
               onChanged: (v) {
                 setState(() => b = v.toInt());
-                sendData();
+                _scheduleSend();
               },
             ),
 
@@ -746,7 +772,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
               max: 100,
               onChanged: (v) {
                 setState(() => volume = v.toInt());
-                sendData();
+                _scheduleSend();
               },
             ),
 
@@ -775,7 +801,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
               max: 255,
               onChanged: (v) {
                 setState(() => gain = v.toInt());
-                sendData();
+                _scheduleSend();
               },
             ),
 
@@ -786,7 +812,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
               max: 255,
               onChanged: (v) {
                 setState(() => bass = v.toInt());
-                sendData();
+                _scheduleSend();
               },
             ),
 
@@ -797,7 +823,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
               max: 255,
               onChanged: (v) {
                 setState(() => treble = v.toInt());
-                sendData();
+                _scheduleSend();
               },
             ),
           ],
