@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -455,17 +456,21 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
       child: ElevatedButton(
         onPressed: isConnected
             ? () {
-                setState(() {
-                  r = nr;
-                  g = ng;
-                  b = nb;
-                });
-                sendData();
+                _setLedColor(Color.fromARGB(255, nr, ng, nb));
               }
             : null,
         child: Text(label),
       ),
     );
+  }
+
+  void _setLedColor(Color color) {
+    setState(() {
+      r = (color.r * 255.0).round().clamp(0, 255);
+      g = (color.g * 255.0).round().clamp(0, 255);
+      b = (color.b * 255.0).round().clamp(0, 255);
+    });
+    _scheduleSend();
   }
 
   Widget _buildLabeledSlider({
@@ -657,178 +662,309 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildLedTab() {
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
+      children: [
+        const SizedBox(height: 12),
+        _buildCategorySelector(),
+        const SizedBox(height: 12),
+        if (category == 0) _buildSoundModeSelector(),
+        if (category == 1) _buildStaticModeSelector(),
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            "LED Color: R$r G$g B$b",
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: SimpleColorWheel(
+            color: Color.fromARGB(255, r, g, b),
+            enabled: isConnected,
+            onColorChanged: _setLedColor,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              _buildColorPreset("Red", 255, 0, 0),
+              const SizedBox(width: 8),
+              _buildColorPreset("Green", 0, 255, 0),
+              const SizedBox(width: 8),
+              _buildColorPreset("Blue", 0, 0, 255),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVolumeTab() {
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
+      children: [
+        const SizedBox(height: 12),
+        _buildLabeledSlider(
+          label: "LED Sensitivity",
+          value: volume,
+          min: 0,
+          max: 100,
+          onChanged: (v) {
+            setState(() => volume = v.toInt());
+            _scheduleSend();
+          },
+        ),
+        const SizedBox(height: 8),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text("DSP Tone Controls"),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              _buildDspPreset("Flat", 128, 128, 128),
+              const SizedBox(width: 8),
+              _buildDspPreset("Warm", 150, 180, 105),
+              const SizedBox(width: 8),
+              _buildDspPreset("Bright", 150, 110, 190),
+            ],
+          ),
+        ),
+        _buildLabeledSlider(
+          label: "Gain PWM",
+          value: gain,
+          min: 0,
+          max: 255,
+          onChanged: (v) {
+            setState(() => gain = v.toInt());
+            _scheduleSend();
+          },
+        ),
+        _buildLabeledSlider(
+          label: "Bass PWM",
+          value: bass,
+          min: 0,
+          max: 255,
+          onChanged: (v) {
+            setState(() => bass = v.toInt());
+            _scheduleSend();
+          },
+        ),
+        _buildLabeledSlider(
+          label: "Treble PWM",
+          value: treble,
+          min: 0,
+          max: 255,
+          onChanged: (v) {
+            setState(() => treble = v.toInt());
+            _scheduleSend();
+          },
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.pairedDeviceName?.isNotEmpty == true
-            ? widget.pairedDeviceName!
-            : "Paired Speaker"),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              disconnect();
-              await widget.onUnpair();
-            },
-            child: const Text("Unpair"),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.only(bottom: 24),
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: isConnected ? null : connectToPairedDevice,
-                      child: const Text("Connect"),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: isConnected ? disconnect : null,
-                      child: const Text("Disconnect"),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                isConnected
-                    ? "Connected to ${widget.pairedDeviceName?.isNotEmpty == true ? widget.pairedDeviceName! : widget.pairedDeviceId}"
-                    : "Non connecté",
-              ),
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(statusMessage),
-            ),
-
-            const SizedBox(height: 12),
-            _buildCategorySelector(),
-            const SizedBox(height: 12),
-            if (category == 0) _buildSoundModeSelector(),
-            if (category == 1) _buildStaticModeSelector(),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(
-                children: [
-                  _buildColorPreset("Red", 255, 0, 0),
-                  const SizedBox(width: 8),
-                  _buildColorPreset("Green", 0, 255, 0),
-                  const SizedBox(width: 8),
-                  _buildColorPreset("Blue", 0, 0, 255),
-                ],
-              ),
-            ),
-
-            _buildLabeledSlider(
-              label: "Red",
-              value: r,
-              min: 0,
-              max: 255,
-              onChanged: (v) {
-                setState(() => r = v.toInt());
-                _scheduleSend();
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(widget.pairedDeviceName?.isNotEmpty == true
+              ? widget.pairedDeviceName!
+              : "Paired Speaker"),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                disconnect();
+                await widget.onUnpair();
               },
-            ),
-
-            _buildLabeledSlider(
-              label: "Green",
-              value: g,
-              min: 0,
-              max: 255,
-              onChanged: (v) {
-                setState(() => g = v.toInt());
-                _scheduleSend();
-              },
-            ),
-
-            _buildLabeledSlider(
-              label: "Blue",
-              value: b,
-              min: 0,
-              max: 255,
-              onChanged: (v) {
-                setState(() => b = v.toInt());
-                _scheduleSend();
-              },
-            ),
-
-            _buildLabeledSlider(
-              label: "LED Sensitivity",
-              value: volume,
-              min: 0,
-              max: 100,
-              onChanged: (v) {
-                setState(() => volume = v.toInt());
-                _scheduleSend();
-              },
-            ),
-
-            const SizedBox(height: 8),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text("DSP Tone Controls"),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(
-                children: [
-                  _buildDspPreset("Flat", 128, 128, 128),
-                  const SizedBox(width: 8),
-                  _buildDspPreset("Warm", 150, 180, 105),
-                  const SizedBox(width: 8),
-                  _buildDspPreset("Bright", 150, 110, 190),
-                ],
-              ),
-            ),
-
-            _buildLabeledSlider(
-              label: "Gain PWM",
-              value: gain,
-              min: 0,
-              max: 255,
-              onChanged: (v) {
-                setState(() => gain = v.toInt());
-                _scheduleSend();
-              },
-            ),
-
-            _buildLabeledSlider(
-              label: "Bass PWM",
-              value: bass,
-              min: 0,
-              max: 255,
-              onChanged: (v) {
-                setState(() => bass = v.toInt());
-                _scheduleSend();
-              },
-            ),
-
-            _buildLabeledSlider(
-              label: "Treble PWM",
-              value: treble,
-              min: 0,
-              max: 255,
-              onChanged: (v) {
-                setState(() => treble = v.toInt());
-                _scheduleSend();
-              },
+              child: const Text("Unpair"),
             ),
           ],
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: "LED Control", icon: Icon(Icons.lightbulb_outline)),
+              Tab(text: "Volume Control", icon: Icon(Icons.equalizer)),
+            ],
+          ),
+        ),
+        body: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: isConnected ? null : connectToPairedDevice,
+                        child: const Text("Connect"),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: isConnected ? disconnect : null,
+                        child: const Text("Disconnect"),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  isConnected
+                      ? "Connected to ${widget.pairedDeviceName?.isNotEmpty == true ? widget.pairedDeviceName! : widget.pairedDeviceId}"
+                      : "Disconnected",
+                ),
+              ),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(statusMessage),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    _buildLedTab(),
+                    _buildVolumeTab(),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+}
+
+class SimpleColorWheel extends StatelessWidget {
+  const SimpleColorWheel({
+    super.key,
+    required this.color,
+    required this.enabled,
+    required this.onColorChanged,
+  });
+
+  final Color color;
+  final bool enabled;
+  final ValueChanged<Color> onColorChanged;
+
+  Color _colorFromOffset(Offset localPosition, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final dx = localPosition.dx - center.dx;
+    final dy = localPosition.dy - center.dy;
+    final radius = size.shortestSide / 2;
+    final distance = math.sqrt(dx * dx + dy * dy).clamp(0.0, radius);
+    final saturation = (distance / radius).clamp(0.0, 1.0);
+    final hue = ((math.atan2(dy, dx) * 180 / math.pi) + 360) % 360;
+    return HSVColor.fromAHSV(1, hue, saturation, 1).toColor();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: IgnorePointer(
+        ignoring: !enabled,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final wheelSize = math.min(constraints.maxWidth, 300.0);
+            return Center(
+              child: GestureDetector(
+                onPanDown: (details) =>
+                    onColorChanged(_colorFromOffset(details.localPosition, Size.square(wheelSize))),
+                onPanUpdate: (details) =>
+                    onColorChanged(_colorFromOffset(details.localPosition, Size.square(wheelSize))),
+                child: SizedBox(
+                  width: wheelSize,
+                  height: wheelSize,
+                  child: CustomPaint(
+                    painter: _ColorWheelPainter(color: color),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _ColorWheelPainter extends CustomPainter {
+  _ColorWheelPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.shortestSide / 2;
+
+    final huePaint = Paint()
+      ..shader = const SweepGradient(
+        colors: [
+          Color(0xFFFF0000),
+          Color(0xFFFFFF00),
+          Color(0xFF00FF00),
+          Color(0xFF00FFFF),
+          Color(0xFF0000FF),
+          Color(0xFFFF00FF),
+          Color(0xFFFF0000),
+        ],
+      ).createShader(rect);
+    canvas.drawCircle(center, radius, huePaint);
+
+    final saturationPaint = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          Colors.white,
+          Colors.transparent,
+        ],
+      ).createShader(rect);
+    canvas.drawCircle(center, radius, saturationPaint);
+
+    final borderPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..color = Colors.black26;
+    canvas.drawCircle(center, radius, borderPaint);
+
+    final hsv = HSVColor.fromColor(color);
+    final angle = hsv.hue * math.pi / 180;
+    final indicatorRadius = hsv.saturation * radius;
+    final indicator = Offset(
+      center.dx + math.cos(angle) * indicatorRadius,
+      center.dy + math.sin(angle) * indicatorRadius,
+    );
+
+    final knobBorder = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..color = Colors.white;
+    final knobFill = Paint()
+      ..style = PaintingStyle.fill
+      ..color = color;
+
+    canvas.drawCircle(indicator, 10, knobBorder);
+    canvas.drawCircle(indicator, 8, knobFill);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ColorWheelPainter oldDelegate) {
+    return oldDelegate.color != color;
   }
 }
