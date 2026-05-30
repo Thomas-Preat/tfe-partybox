@@ -35,7 +35,7 @@ constexpr uint16_t PWM_FREQUENCY_HZ = 20000;
 constexpr uint8_t PWM_RESOLUTION_BITS = 8;
 
 // Temporary debug overlay to verify high-band column positions.
-constexpr bool DEBUG_HIGH_COLUMN_MARKERS = true;
+constexpr bool DEBUG_HIGH_COLUMN_MARKERS = false;
 
 struct ToneControlState {
   uint8_t gain = 128;
@@ -148,7 +148,7 @@ void applyToneControls() {
 }
 
 int XY(int x, int y) {
-  x = (WIDTH - 1) - x;
+  y = (HEIGHT - 1) - y;
   if (y % 2 == 0) return y * WIDTH + x;
   return y * WIDTH + (WIDTH - 1 - x);
 }
@@ -318,15 +318,16 @@ void renderRainbowFFT() {
     uint32_t color = hsvToRgb(h, 255, 255);
 
     for (int y = 0; y < HEIGHT; y++) {
-      int led = XY(x, HEIGHT - 1 - y);
+      int led = XY(x, y);
+      int levelY = HEIGHT - 1 - y;
 
-      if (y < ledLevels[x]) {
+      if (levelY < ledLevels[x]) {
         pixels.setPixelColor(led, color);
       } else {
         pixels.setPixelColor(led, 0);
       }
 
-      if (showPeak && (int)peaks[x] == y) {
+      if (showPeak && (int)peaks[x] == levelY) {
         pixels.setPixelColor(led, pixels.Color(255, 255, 255));
       }
     }
@@ -347,15 +348,16 @@ void renderGradientFFT() {
     uint32_t color = hsvToRgb(h, 200, 255);
 
     for (int y = 0; y < HEIGHT; y++) {
-      int led = XY(x, HEIGHT - 1 - y);
+      int led = XY(x, y);
+      int levelY = HEIGHT - 1 - y;
 
-      if (y < ledLevels[x]) {
+      if (levelY < ledLevels[x]) {
         pixels.setPixelColor(led, color);
       } else {
         pixels.setPixelColor(led, 0);
       }
 
-      if (showPeak && (int)peaks[x] == y) {
+      if (showPeak && (int)peaks[x] == levelY) {
         pixels.setPixelColor(led, pixels.Color(255, 255, 255));
       }
     }
@@ -374,15 +376,16 @@ void renderSolidFFT() {
 
   for (int x = 0; x < WIDTH; x++) {
     for (int y = 0; y < HEIGHT; y++) {
-      int led = XY(x, HEIGHT - 1 - y);
+      int led = XY(x, y);
+      int levelY = HEIGHT - 1 - y;
 
-      if (y < ledLevels[x]) {
+      if (levelY < ledLevels[x]) {
         pixels.setPixelColor(led, color);
       } else {
         pixels.setPixelColor(led, 0);
       }
 
-      if (showPeak && (int)peaks[x] == y) {
+      if (showPeak && (int)peaks[x] == levelY) {
         pixels.setPixelColor(led, pixels.Color(255, 255, 255));
       }
     }

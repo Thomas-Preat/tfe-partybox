@@ -257,6 +257,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
   int treble = 128;
 
   bool isConnected = false;
+  bool _isPickingColor = false;
 
   bool get isBleBusy {
     if (reconnectAvailableAt == null) return false;
@@ -664,6 +665,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
 
   Widget _buildLedTab() {
     return ListView(
+      physics: _isPickingColor ? const NeverScrollableScrollPhysics() : null,
       padding: const EdgeInsets.only(bottom: 24),
       children: [
         const SizedBox(height: 12),
@@ -686,6 +688,14 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
             color: Color.fromARGB(255, r, g, b),
             enabled: isConnected,
             onColorChanged: _setLedColor,
+            onInteractionStart: () {
+              if (_isPickingColor) return;
+              setState(() => _isPickingColor = true);
+            },
+            onInteractionEnd: () {
+              if (!_isPickingColor) return;
+              setState(() => _isPickingColor = false);
+            },
           ),
         ),
         const SizedBox(height: 16),
@@ -835,6 +845,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
               const SizedBox(height: 8),
               Expanded(
                 child: TabBarView(
+                  physics: _isPickingColor ? const NeverScrollableScrollPhysics() : null,
                   children: [
                     _buildLedTab(),
                     _buildVolumeTab(),
@@ -855,11 +866,15 @@ class SimpleColorWheel extends StatelessWidget {
     required this.color,
     required this.enabled,
     required this.onColorChanged,
+    this.onInteractionStart,
+    this.onInteractionEnd,
   });
 
   final Color color;
   final bool enabled;
   final ValueChanged<Color> onColorChanged;
+  final VoidCallback? onInteractionStart;
+  final VoidCallback? onInteractionEnd;
 
   Color _colorFromOffset(Offset localPosition, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
@@ -883,10 +898,21 @@ class SimpleColorWheel extends StatelessWidget {
             final wheelSize = math.min(constraints.maxWidth, 300.0);
             return Center(
               child: GestureDetector(
-                onPanDown: (details) =>
-                    onColorChanged(_colorFromOffset(details.localPosition, Size.square(wheelSize))),
-                onPanUpdate: (details) =>
-                    onColorChanged(_colorFromOffset(details.localPosition, Size.square(wheelSize))),
+                onTapDown: (details) {
+                  onInteractionStart?.call();
+                  onColorChanged(_colorFromOffset(details.localPosition, Size.square(wheelSize)));
+                },
+                onTapUp: (_) => onInteractionEnd?.call(),
+                onTapCancel: () => onInteractionEnd?.call(),
+                onPanStart: (details) {
+                  onInteractionStart?.call();
+                  onColorChanged(_colorFromOffset(details.localPosition, Size.square(wheelSize)));
+                },
+                onPanUpdate: (details) {
+                  onColorChanged(_colorFromOffset(details.localPosition, Size.square(wheelSize)));
+                },
+                onPanEnd: (_) => onInteractionEnd?.call(),
+                onPanCancel: () => onInteractionEnd?.call(),
                 child: SizedBox(
                   width: wheelSize,
                   height: wheelSize,
