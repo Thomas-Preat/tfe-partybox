@@ -8,6 +8,7 @@
 
 #include <Adafruit_NeoPixel.h>
 #include <arduinoFFT.h>
+#include "tests/esp32_firmware/include/esp32_receiver_logic.h"
 
 #define LED_PIN 5
 #define WIDTH 12
@@ -172,30 +173,32 @@ class DataCallback : public BLECharacteristicCallbacks {
     String value = pCharacteristic->getValue();
     lastBlePacketMs = millis();
 
-    if (value.length() >= 10) {
-      category = static_cast<uint8_t>(value[0]);
-      subMode = static_cast<uint8_t>(value[1]);
-      r = static_cast<uint8_t>(value[2]);
-      g = static_cast<uint8_t>(value[3]);
-      b = static_cast<uint8_t>(value[4]);
-      volume = static_cast<uint8_t>(value[5]);
-      flags = static_cast<uint8_t>(value[6]);
-      toneControls.gain = static_cast<uint8_t>(value[7]);
-      toneControls.bass = static_cast<uint8_t>(value[8]);
-      toneControls.treble = static_cast<uint8_t>(value[9]);
-      applyToneControls();
-    } else if (value.length() >= 7) {
-      category = static_cast<uint8_t>(value[0]);
-      subMode = static_cast<uint8_t>(value[1]);
-      r = static_cast<uint8_t>(value[2]);
-      g = static_cast<uint8_t>(value[3]);
-      b = static_cast<uint8_t>(value[4]);
-      volume = static_cast<uint8_t>(value[5]);
-      flags = static_cast<uint8_t>(value[6]);
-    } else if (value.length() >= 3) {
-      toneControls.gain = static_cast<uint8_t>(value[0]);
-      toneControls.bass = static_cast<uint8_t>(value[1]);
-      toneControls.treble = static_cast<uint8_t>(value[2]);
+    const size_t maxPayloadSize = 10;
+    uint8_t payload[maxPayloadSize] = {0};
+    const size_t payloadLen = value.length() < static_cast<int>(maxPayloadSize)
+        ? static_cast<size_t>(value.length())
+        : maxPayloadSize;
+
+    for (size_t i = 0; i < payloadLen; i++) {
+      payload[i] = static_cast<uint8_t>(value[i]);
+    }
+
+    const ParsedBleWrite parsed = parseBleWrite(payload, payloadLen);
+
+    if (parsed.hasColorPayload) {
+      category = parsed.category;
+      subMode = parsed.subMode;
+      r = parsed.red;
+      g = parsed.green;
+      b = parsed.blue;
+      volume = parsed.volume;
+      flags = parsed.flags;
+    }
+
+    if (parsed.hasTonePayload) {
+      toneControls.gain = parsed.gain;
+      toneControls.bass = parsed.bass;
+      toneControls.treble = parsed.treble;
       applyToneControls();
     }
   }
@@ -224,31 +227,11 @@ void audioCallback(const uint8_t* data, uint32_t len) {
 }
 
 uint32_t hsvToRgb(uint8_t h, uint8_t s, uint8_t v) {
-  float hf = h / 255.0 * 6.0;
-  float sf = s / 255.0;
-  float vf = v / 255.0;
-
-  int i = (int)hf;
-  float f = hf - i;
-
-  float p = vf * (1.0 - sf);
-  float q = vf * (1.0 - sf * f);
-  float t = vf * (1.0 - sf * (1.0 - f));
-
-  float rf;
-  float gf;
-  float bf;
-  switch (i % 6) {
-    case 0: rf = vf; gf = t; bf = p; break;
-    case 1: rf = q; gf = vf; bf = p; break;
-    case 2: rf = p; gf = vf; bf = t; break;
-    case 3: rf = p; gf = q; bf = vf; break;
-    case 4: rf = t; gf = p; bf = vf; break;
-    case 5: rf = vf; gf = p; bf = q; break;
-    default: rf = gf = bf = 0; break;
-  }
-
-  return pixels.Color((uint8_t)(rf * 255), (uint8_t)(gf * 255), (uint8_t)(bf * 255));
+  const uint32_t packed = hsvToRgbPacked(h, s, v);
+  const uint8_t red = static_cast<uint8_t>((packed >> 16) & 0xFF);
+  const uint8_t green = static_cast<uint8_t>((packed >> 8) & 0xFF);
+  const uint8_t blue = static_cast<uint8_t>(packed & 0xFF);
+  return pixels.Color(red, green, blue);
 }
 
 void processFFTData() {

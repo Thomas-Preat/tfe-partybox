@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:esp32_controller/ble_payload.dart';
 
 void main() {
   runApp(const MyApp());
@@ -432,20 +433,22 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
     if (!isConnected || bleChar == null) return;
 
     _lastSendTime = DateTime.now();
-    final cr = r.clamp(0, 255);
-    final cg = g.clamp(0, 255);
-    final cb = b.clamp(0, 255);
-    final cv = volume.clamp(0, 100);
-    final ccat = category.clamp(0, 1);
-    final csub = subMode.clamp(0, 2);
-    final cgain = gain.clamp(0, 255);
-    final cbass = bass.clamp(0, 255);
-    final ctreble = treble.clamp(0, 255);
-    int flags = showPeak ? 0x01 : 0x00;
+    final payload = encodeBleControlPacket(
+      category: category,
+      subMode: subMode,
+      red: r,
+      green: g,
+      blue: b,
+      volume: volume,
+      showPeak: showPeak,
+      gain: gain,
+      bass: bass,
+      treble: treble,
+    );
     try {
       await flutterReactiveBle.writeCharacteristicWithResponse(
         bleChar!,
-        value: [ccat, csub, cr, cg, cb, cv, flags, cgain, cbass, ctreble],
+        value: payload,
       );
     } catch (e) {
       debugPrint("Write error: $e");
