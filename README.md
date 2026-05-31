@@ -47,7 +47,7 @@ Pin highlights in current firmware:
 You have 2 options:
 
 1. Use already prepared release APK:
-	- `esp32_controller/releases/esp32-controller-v1.0.0.apk`
+	- `esp32_controller/releases/esp32-controller-vx.x.x.apk`
 2. Build a new APK:
 	- From `esp32_controller/` run:
 	  - `flutter test`
@@ -116,7 +116,7 @@ Pins importants dans le firmware actuel:
 Vous avez 2 options:
 
 1. Utiliser l'APK de release deja prepare:
-	- `esp32_controller/releases/esp32-controller-v1.0.0.apk`
+	- `esp32_controller/releases/esp32-controller-vx.x.x.apk`
 2. Construire un nouvel APK:
 	- Depuis `esp32_controller/`, executez:
 	  - `flutter test`
