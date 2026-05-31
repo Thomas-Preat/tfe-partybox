@@ -16,6 +16,131 @@ final serviceUuid = Uuid.parse("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
 final charUuid = Uuid.parse("abcd1234-5678-90ab-cdef-1234567890ab");
 const targetDeviceName = "ESP32-FFT Ctrl";
 
+const _pairedDeviceIdKey = 'paired_device_id';
+const _pairedDeviceNameKey = 'paired_device_name';
+const _appLanguageKey = 'app_language';
+
+enum AppLanguage { english, french }
+
+String tr(AppLanguage language, String key) {
+  final value = _localizedStrings[language]?[key];
+  if (value != null) {
+    return value;
+  }
+  return _localizedStrings[AppLanguage.english]?[key] ?? key;
+}
+
+const Map<AppLanguage, Map<String, String>> _localizedStrings = {
+  AppLanguage.english: {
+    'pairSpeaker': 'Pair Speaker',
+    'settings': 'Settings',
+    'language': 'Language',
+    'english': 'English',
+    'french': 'French',
+    'scan': 'Scan',
+    'stop': 'Stop',
+    'pair': 'Pair',
+    'unnamedBleDevice': 'Unnamed BLE device',
+    'expectedEsp32Controller': 'Expected ESP32 controller',
+    'pairedSpeaker': 'Paired Speaker',
+    'unpair': 'Unpair',
+    'ledControl': 'LED Control',
+    'volumeControl': 'Volume Control',
+    'connect': 'Connect',
+    'disconnect': 'Disconnect',
+    'disconnected': 'Disconnected',
+    'connectedTo': 'Connected to',
+    'modeCategory': 'Mode Category',
+    'soundBased': 'Sound Based',
+    'notSoundBased': 'Not Sound Based',
+    'fftMode': 'STFT Mode',
+    'rainbowFft': 'Rainbow STFT',
+    'gradientFft': 'Gradient STFT',
+    'solidFft': 'Solid STFT',
+    'showPeakIndicator': 'Show Peak Indicator',
+    'staticMode': 'Static Mode',
+    'solidColor': 'Solid Color',
+    'gradient': 'Gradient',
+    'columnRainbow': 'Column Rainbow',
+    'ledColor': 'LED Color',
+    'red': 'Red',
+    'green': 'Green',
+    'blue': 'Blue',
+    'ledSensitivity': 'LED Sensitivity',
+    'dspToneControls': 'DSP Tone Controls',
+    'flat': 'Flat',
+    'warm': 'Warm',
+    'bright': 'Bright',
+    'gainPwm': 'Gain PWM',
+    'bassPwm': 'Bass PWM',
+    'treblePwm': 'Treble PWM',
+    'statusConnecting': 'Connecting...',
+    'statusConnected': 'Connected',
+    'statusDisconnected': 'Disconnected',
+    'statusDisconnecting': 'Disconnecting...',
+    'statusConnectedMissingChar': 'Connected but required characteristic was not found',
+    'statusConnectionFailedBusy': 'Connection failed: device/stack busy. Wait a moment and retry.',
+    'statusConnectionFailedPrefix': 'Connection failed:',
+    'statusDisconnectedWaiting': 'Disconnected, waiting for BLE release...',
+    'statusRetryIn': 'Device may still be busy, retry in',
+    'seconds': 's',
+  },
+  AppLanguage.french: {
+    'pairSpeaker': 'Appairer le haut-parleur',
+    'settings': 'Paramètres',
+    'language': 'Langue',
+    'english': 'Anglais',
+    'french': 'Français',
+    'scan': 'Scanner',
+    'stop': 'Arrêter',
+    'pair': 'Appairer',
+    'unnamedBleDevice': 'Appareil BLE sans nom',
+    'expectedEsp32Controller': 'Contrôleur ESP32 attendu',
+    'pairedSpeaker': 'Haut-parleur appairé',
+    'unpair': 'Désappairer',
+    'ledControl': 'Contrôle LED',
+    'volumeControl': 'Contrôle du volume',
+    'connect': 'Connecter',
+    'disconnect': 'Déconnecter',
+    'disconnected': 'Déconnecté',
+    'connectedTo': 'Connecté à',
+    'modeCategory': 'Catégorie de mode',
+    'soundBased': 'Basé sur le son',
+    'notSoundBased': 'Non basé sur le son',
+    'fftMode': 'Mode STFT',
+    'rainbowFft': 'STFT arc-en-ciel',
+    'gradientFft': 'STFT dégradé',
+    'solidFft': 'STFT couleur fixe',
+    'showPeakIndicator': 'Afficher l’indicateur de pic',
+    'staticMode': 'Mode statique',
+    'solidColor': 'Couleur fixe',
+    'gradient': 'Dégradé',
+    'columnRainbow': 'Arc-en-ciel colonnes',
+    'ledColor': 'Couleur LED',
+    'red': 'Rouge',
+    'green': 'Vert',
+    'blue': 'Bleu',
+    'ledSensitivity': 'Sensibilité LED',
+    'dspToneControls': 'Contrôles de tonalité DSP',
+    'flat': 'Plat',
+    'warm': 'Chaud',
+    'bright': 'Clair',
+    'gainPwm': 'PWM gain',
+    'bassPwm': 'PWM basses',
+    'treblePwm': 'PWM aigus',
+    'statusConnecting': 'Connexion...',
+    'statusConnected': 'Connecté',
+    'statusDisconnected': 'Déconnecté',
+    'statusDisconnecting': 'Deconnexion...',
+    'statusConnectedMissingChar': 'Connecté mais la caractéristique requise est introuvable',
+    'statusConnectionFailedBusy': 'Échec connexion: appareil/pile occupé. Attendez puis réessayez.',
+    'statusConnectionFailedPrefix': 'Échec connexion:',
+    'statusDisconnectedWaiting': 'Déconnecté, attente libération BLE...',
+    'statusRetryIn': 'Appareil possiblement occupé, réessayez dans',
+    'seconds': 's',
+  },
+};
+
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
@@ -27,6 +152,7 @@ class _MyAppState extends State<MyApp> {
   final _storage = const FlutterSecureStorage();
   String? pairedDeviceId;
   String? pairedDeviceName;
+  AppLanguage appLanguage = AppLanguage.english;
   bool isLoading = true;
 
   @override
@@ -36,18 +162,28 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _loadPairedDevice() async {
-    final deviceId = await _storage.read(key: 'paired_device_id');
-    final deviceName = await _storage.read(key: 'paired_device_name');
+    final deviceId = await _storage.read(key: _pairedDeviceIdKey);
+    final deviceName = await _storage.read(key: _pairedDeviceNameKey);
+    final savedLanguage = await _storage.read(key: _appLanguageKey);
     setState(() {
       pairedDeviceId = deviceId;
       pairedDeviceName = deviceName;
+      appLanguage = savedLanguage == 'fr' ? AppLanguage.french : AppLanguage.english;
       isLoading = false;
     });
   }
 
+  Future<void> _setLanguage(AppLanguage language) async {
+    await _storage.write(key: _appLanguageKey, value: language == AppLanguage.french ? 'fr' : 'en');
+    if (!mounted) return;
+    setState(() {
+      appLanguage = language;
+    });
+  }
+
   Future<void> _pairDevice(DiscoveredDevice device) async {
-    await _storage.write(key: 'paired_device_id', value: device.id);
-    await _storage.write(key: 'paired_device_name', value: device.name);
+    await _storage.write(key: _pairedDeviceIdKey, value: device.id);
+    await _storage.write(key: _pairedDeviceNameKey, value: device.name);
 
     setState(() {
       pairedDeviceId = device.id;
@@ -56,8 +192,8 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _unpairDevice() async {
-    await _storage.delete(key: 'paired_device_id');
-    await _storage.delete(key: 'paired_device_name');
+    await _storage.delete(key: _pairedDeviceIdKey);
+    await _storage.delete(key: _pairedDeviceNameKey);
 
     setState(() {
       pairedDeviceId = null;
@@ -71,11 +207,17 @@ class _MyAppState extends State<MyApp> {
       home: isLoading
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
           : (pairedDeviceId == null
-              ? PairingPage(onPair: _pairDevice)
+              ? PairingPage(
+                  onPair: _pairDevice,
+                  language: appLanguage,
+                  onLanguageChanged: _setLanguage,
+                )
               : DevicePage(
                   pairedDeviceId: pairedDeviceId!,
                   pairedDeviceName: pairedDeviceName,
                   onUnpair: _unpairDevice,
+                  language: appLanguage,
+                  onLanguageChanged: _setLanguage,
                 )),
       debugShowCheckedModeBanner: false,
     );
@@ -83,9 +225,16 @@ class _MyAppState extends State<MyApp> {
 }
 
 class PairingPage extends StatefulWidget {
-  const PairingPage({super.key, required this.onPair});
+  const PairingPage({
+    super.key,
+    required this.onPair,
+    required this.language,
+    required this.onLanguageChanged,
+  });
 
   final Future<void> Function(DiscoveredDevice device) onPair;
+  final AppLanguage language;
+  final Future<void> Function(AppLanguage language) onLanguageChanged;
 
   @override
   State<PairingPage> createState() => _PairingPageState();
@@ -176,8 +325,27 @@ class _PairingPageState extends State<PairingPage> {
 
   @override
   Widget build(BuildContext context) {
+    final language = widget.language;
     return Scaffold(
-      appBar: AppBar(title: const Text("Pair Speaker")),
+      appBar: AppBar(
+        title: Text(tr(language, 'pairSpeaker')),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: tr(language, 'settings'),
+            onPressed: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => LanguageSettingsPage(
+                    language: language,
+                    onLanguageChanged: widget.onLanguageChanged,
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(
@@ -187,14 +355,14 @@ class _PairingPageState extends State<PairingPage> {
                 Expanded(
                   child: ElevatedButton(
                     onPressed: isScanning ? null : startScan,
-                    child: const Text("Scan"),
+                    child: Text(tr(language, 'scan')),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton(
                     onPressed: isScanning ? stopScan : null,
-                    child: const Text("Stop"),
+                    child: Text(tr(language, 'stop')),
                   ),
                 ),
               ],
@@ -203,15 +371,15 @@ class _PairingPageState extends State<PairingPage> {
           Expanded(
             child: ListView(
               children: devices.map((d) {
-                final displayName = d.name.isEmpty ? "Unnamed BLE device" : d.name;
+                final displayName = d.name.isEmpty ? tr(language, 'unnamedBleDevice') : d.name;
                 final isTargetDevice = d.name == targetDeviceName;
                 return ListTile(
                   title: Text(displayName),
-                  subtitle: Text(isTargetDevice ? "${d.id}\nExpected ESP32 controller" : d.id),
+                  subtitle: Text(isTargetDevice ? "${d.id}\n${tr(language, 'expectedEsp32Controller')}" : d.id),
                   isThreeLine: isTargetDevice,
                   trailing: ElevatedButton(
                     onPressed: () => pairDevice(d),
-                    child: const Text("Pair"),
+                    child: Text(tr(language, 'pair')),
                   ),
                 );
               }).toList(),
@@ -229,11 +397,15 @@ class DevicePage extends StatefulWidget {
     required this.pairedDeviceId,
     required this.pairedDeviceName,
     required this.onUnpair,
+    required this.language,
+    required this.onLanguageChanged,
   });
 
   final String pairedDeviceId;
   final String? pairedDeviceName;
   final Future<void> Function() onUnpair;
+  final AppLanguage language;
+  final Future<void> Function(AppLanguage language) onLanguageChanged;
 
   @override
   State<DevicePage> createState() => _DevicePageState();
@@ -246,7 +418,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
   DateTime? _lastSendTime;
   QualifiedCharacteristic? bleChar;
   DateTime? reconnectAvailableAt;
-  String statusMessage = "Disconnected";
+  String statusMessage = 'statusDisconnected';
 
   int r = 255, g = 0, b = 0;
   int volume = 50;
@@ -312,21 +484,21 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
   void connectToPairedDevice() {
     if (isBleBusy) {
       setState(() {
-        statusMessage = "Device may still be busy, retry in ${reconnectWaitSeconds}s";
+        statusMessage = 'statusBusyRetry';
       });
       return;
     }
 
     connectionSub?.cancel();
     setState(() {
-      statusMessage = "Connecting...";
+      statusMessage = 'statusConnecting';
     });
 
     connectionSub = flutterReactiveBle.connectToDevice(
       id: widget.pairedDeviceId,
     ).listen((state) async {
       if (state.connectionState == DeviceConnectionState.connecting) {
-        setState(() => statusMessage = "Connecting...");
+        setState(() => statusMessage = 'statusConnecting');
         return;
       }
 
@@ -354,7 +526,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
 
           setState(() {
             isConnected = true;
-            statusMessage = "Connected";
+            statusMessage = 'statusConnected';
           });
 
           await sendData();
@@ -364,18 +536,18 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
           setState(() {
             isConnected = false;
             bleChar = null;
-            statusMessage = "Connected but required characteristic was not found";
+            statusMessage = 'statusConnectedMissingChar';
           });
         }
       } else if (state.connectionState == DeviceConnectionState.disconnecting) {
         _stopKeepAlive();
-        setState(() => statusMessage = "Disconnecting...");
+        setState(() => statusMessage = 'statusDisconnecting');
       } else if (state.connectionState == DeviceConnectionState.disconnected) {
         _stopKeepAlive();
         setState(() {
           isConnected = false;
           bleChar = null;
-          statusMessage = "Disconnected";
+          statusMessage = 'statusDisconnected';
         });
       }
     }, onError: (e) {
@@ -389,9 +561,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
       setState(() {
         isConnected = false;
         bleChar = null;
-        statusMessage = likelyBusy
-            ? "Connection failed: device/stack busy. Wait a moment and retry."
-            : "Connection failed: $e";
+        statusMessage = likelyBusy ? 'statusConnectionFailedBusy' : 'statusConnectionFailed:$e';
       });
     });
   }
@@ -405,15 +575,26 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
     setState(() {
       isConnected = false;
       bleChar = null;
-      statusMessage = "Disconnected, waiting for BLE release...";
+      statusMessage = 'statusDisconnectedWaiting';
     });
 
     Future.delayed(const Duration(seconds: 2), () {
       if (!mounted || isConnected) return;
       setState(() {
-        statusMessage = "Disconnected";
+        statusMessage = 'statusDisconnected';
       });
     });
+  }
+
+  String _resolveStatusText(AppLanguage language) {
+    if (statusMessage == 'statusBusyRetry') {
+      return '${tr(language, 'statusRetryIn')} ${reconnectWaitSeconds}${tr(language, 'seconds')}';
+    }
+    if (statusMessage.startsWith('statusConnectionFailed:')) {
+      final detail = statusMessage.substring('statusConnectionFailed:'.length);
+      return '${tr(language, 'statusConnectionFailedPrefix')} $detail';
+    }
+    return tr(language, statusMessage);
   }
 
   void _scheduleSend() {
@@ -502,12 +683,13 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
   }
 
   Widget _buildCategorySelector() {
+    final language = widget.language;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text("Mode Category"),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text(tr(language, 'modeCategory')),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -519,7 +701,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: category == 0 ? Colors.blue : Colors.grey,
                   ),
-                  child: const Text("Sound Based"),
+                  child: Text(tr(language, 'soundBased')),
                 ),
               ),
               const SizedBox(width: 8),
@@ -529,7 +711,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: category == 1 ? Colors.blue : Colors.grey,
                   ),
-                  child: const Text("Not Sound Based"),
+                  child: Text(tr(language, 'notSoundBased')),
                 ),
               ),
             ],
@@ -540,12 +722,13 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
   }
 
   Widget _buildSoundModeSelector() {
+    final language = widget.language;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text("FFT Mode"),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text(tr(language, 'fftMode')),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -559,7 +742,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: subMode == 0 ? Colors.blue : Colors.grey,
                 ),
-                child: const Text("Rainbow FFT"),
+                child: Text(tr(language, 'rainbowFft')),
               ),
               ElevatedButton(
                 onPressed: isConnected
@@ -568,7 +751,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: subMode == 1 ? Colors.blue : Colors.grey,
                 ),
-                child: const Text("Gradient FFT"),
+                child: Text(tr(language, 'gradientFft')),
               ),
               ElevatedButton(
                 onPressed: isConnected
@@ -577,7 +760,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: subMode == 2 ? Colors.blue : Colors.grey,
                 ),
-                child: const Text("Solid FFT"),
+                child: Text(tr(language, 'solidFft')),
               ),
             ],
           ),
@@ -586,7 +769,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: [
-              const Text("Show Peak Indicator"),
+              Text(tr(language, 'showPeakIndicator')),
               const SizedBox(width: 8),
               Switch(
                 value: showPeak,
@@ -602,12 +785,13 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
   }
 
   Widget _buildStaticModeSelector() {
+    final language = widget.language;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text("Static Mode"),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text(tr(language, 'staticMode')),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -621,7 +805,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: subMode == 0 ? Colors.blue : Colors.grey,
                 ),
-                child: const Text("Solid Color"),
+                child: Text(tr(language, 'solidColor')),
               ),
               ElevatedButton(
                 onPressed: isConnected
@@ -630,7 +814,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: subMode == 1 ? Colors.blue : Colors.grey,
                 ),
-                child: const Text("Gradient"),
+                child: Text(tr(language, 'gradient')),
               ),
               ElevatedButton(
                 onPressed: isConnected
@@ -639,7 +823,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: subMode == 2 ? Colors.blue : Colors.grey,
                 ),
-                child: const Text("Column Rainbow"),
+                child: Text(tr(language, 'columnRainbow')),
               ),
             ],
           ),
@@ -667,6 +851,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
   }
 
   Widget _buildLedTab() {
+    final language = widget.language;
     return ListView(
       physics: _isPickingColor ? const NeverScrollableScrollPhysics() : null,
       padding: const EdgeInsets.only(bottom: 24),
@@ -680,7 +865,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
-            "LED Color: R$r G$g B$b",
+            "${tr(language, 'ledColor')}: R$r G$g B$b",
             style: Theme.of(context).textTheme.bodyMedium,
           ),
         ),
@@ -706,11 +891,11 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Row(
             children: [
-              _buildColorPreset("Red", 255, 0, 0),
+              _buildColorPreset(tr(language, 'red'), 255, 0, 0),
               const SizedBox(width: 8),
-              _buildColorPreset("Green", 0, 255, 0),
+              _buildColorPreset(tr(language, 'green'), 0, 255, 0),
               const SizedBox(width: 8),
-              _buildColorPreset("Blue", 0, 0, 255),
+              _buildColorPreset(tr(language, 'blue'), 0, 0, 255),
             ],
           ),
         ),
@@ -719,12 +904,13 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
   }
 
   Widget _buildVolumeTab() {
+    final language = widget.language;
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
         const SizedBox(height: 12),
         _buildLabeledSlider(
-          label: "LED Sensitivity",
+          label: tr(language, 'ledSensitivity'),
           value: volume,
           min: 0,
           max: 100,
@@ -734,24 +920,24 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
           },
         ),
         const SizedBox(height: 8),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text("DSP Tone Controls"),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text(tr(language, 'dspToneControls')),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Row(
             children: [
-              _buildDspPreset("Flat", 128, 128, 128),
+              _buildDspPreset(tr(language, 'flat'), 128, 128, 128),
               const SizedBox(width: 8),
-              _buildDspPreset("Warm", 150, 180, 105),
+              _buildDspPreset(tr(language, 'warm'), 150, 180, 105),
               const SizedBox(width: 8),
-              _buildDspPreset("Bright", 150, 110, 190),
+              _buildDspPreset(tr(language, 'bright'), 150, 110, 190),
             ],
           ),
         ),
         _buildLabeledSlider(
-          label: "Gain PWM",
+          label: tr(language, 'gainPwm'),
           value: gain,
           min: 0,
           max: 255,
@@ -761,7 +947,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
           },
         ),
         _buildLabeledSlider(
-          label: "Bass PWM",
+          label: tr(language, 'bassPwm'),
           value: bass,
           min: 0,
           max: 255,
@@ -771,7 +957,7 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
           },
         ),
         _buildLabeledSlider(
-          label: "Treble PWM",
+          label: tr(language, 'treblePwm'),
           value: treble,
           min: 0,
           max: 255,
@@ -786,26 +972,41 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final language = widget.language;
     return DefaultTabController(
       length: 2,
       child: Scaffold(
         appBar: AppBar(
           title: Text(widget.pairedDeviceName?.isNotEmpty == true
               ? widget.pairedDeviceName!
-              : "Paired Speaker"),
+              : tr(language, 'pairedSpeaker')),
           actions: [
+            IconButton(
+              icon: const Icon(Icons.settings),
+              tooltip: tr(language, 'settings'),
+              onPressed: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => LanguageSettingsPage(
+                      language: language,
+                      onLanguageChanged: widget.onLanguageChanged,
+                    ),
+                  ),
+                );
+              },
+            ),
             TextButton(
               onPressed: () async {
                 disconnect();
                 await widget.onUnpair();
               },
-              child: const Text("Unpair"),
+              child: Text(tr(language, 'unpair')),
             ),
           ],
-          bottom: const TabBar(
+          bottom: TabBar(
             tabs: [
-              Tab(text: "LED Control", icon: Icon(Icons.lightbulb_outline)),
-              Tab(text: "Volume Control", icon: Icon(Icons.equalizer)),
+              Tab(text: tr(language, 'ledControl'), icon: const Icon(Icons.lightbulb_outline)),
+              Tab(text: tr(language, 'volumeControl'), icon: const Icon(Icons.equalizer)),
             ],
           ),
         ),
@@ -819,14 +1020,14 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
                     Expanded(
                       child: ElevatedButton(
                         onPressed: isConnected ? null : connectToPairedDevice,
-                        child: const Text("Connect"),
+                        child: Text(tr(language, 'connect')),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: OutlinedButton(
                         onPressed: isConnected ? disconnect : null,
-                        child: const Text("Disconnect"),
+                        child: Text(tr(language, 'disconnect')),
                       ),
                     ),
                   ],
@@ -836,14 +1037,14 @@ class _DevicePageState extends State<DevicePage> with WidgetsBindingObserver {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Text(
                   isConnected
-                      ? "Connected to ${widget.pairedDeviceName?.isNotEmpty == true ? widget.pairedDeviceName! : widget.pairedDeviceId}"
-                      : "Disconnected",
+                      ? '${tr(language, 'connectedTo')} ${widget.pairedDeviceName?.isNotEmpty == true ? widget.pairedDeviceName! : widget.pairedDeviceId}'
+                      : tr(language, 'disconnected'),
                 ),
               ),
               const SizedBox(height: 8),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(statusMessage),
+                child: Text(_resolveStatusText(language)),
               ),
               const SizedBox(height: 8),
               Expanded(
@@ -995,5 +1196,52 @@ class _ColorWheelPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _ColorWheelPainter oldDelegate) {
     return oldDelegate.color != color;
+  }
+}
+
+class LanguageSettingsPage extends StatelessWidget {
+  const LanguageSettingsPage({
+    super.key,
+    required this.language,
+    required this.onLanguageChanged,
+  });
+
+  final AppLanguage language;
+  final Future<void> Function(AppLanguage language) onLanguageChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(tr(language, 'settings')),
+      ),
+      body: ListView(
+        children: [
+          ListTile(
+            title: Text(tr(language, 'language')),
+          ),
+          RadioListTile<AppLanguage>(
+            value: AppLanguage.english,
+            groupValue: language,
+            title: Text(tr(language, 'english')),
+            onChanged: (value) async {
+              if (value == null) return;
+              await onLanguageChanged(value);
+              if (context.mounted) Navigator.of(context).pop();
+            },
+          ),
+          RadioListTile<AppLanguage>(
+            value: AppLanguage.french,
+            groupValue: language,
+            title: Text(tr(language, 'french')),
+            onChanged: (value) async {
+              if (value == null) return;
+              await onLanguageChanged(value);
+              if (context.mounted) Navigator.of(context).pop();
+            },
+          ),
+        ],
+      ),
+    );
   }
 }
