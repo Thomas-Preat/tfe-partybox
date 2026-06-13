@@ -27,6 +27,7 @@ const char* BLE_DEVICE_NAME = "ESP32-FFT Ctrl";
 constexpr uint8_t GAIN_PWM_PIN = 25;
 constexpr uint8_t BASS_PWM_PIN = 26;
 constexpr uint8_t TREBLE_PWM_PIN = 27;
+constexpr uint8_t BT_RESET_BUTTON_PIN = 32;
 
 constexpr uint8_t GAIN_PWM_CHANNEL = 0;
 constexpr uint8_t BASS_PWM_CHANNEL = 1;
@@ -80,6 +81,7 @@ unsigned long lastModeUpdate = 0;
 const unsigned long MODE_UPDATE_INTERVAL = 50;
 uint8_t animOffset = 0;
 uint8_t columnOffset = 0;
+uint8_t connectionPulse = 0;
 
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
@@ -88,6 +90,7 @@ unsigned long lastBlePacketMs = 0;
 const unsigned long BLE_STALE_TIMEOUT_MS = 7000;
 bool pendingRestartAdvertising = false;
 unsigned long restartAdvertisingAtMs = 0;
+volatile esp_a2d_connection_state_t btConnectionState = ESP_A2D_CONNECTION_STATE_DISCONNECTED;
 
 volatile unsigned long lastAudioPacketMs = 0;
 unsigned long lastSilenceWriteMs = 0;
@@ -96,6 +99,13 @@ volatile bool audioStreamActive = false;
 volatile bool holdI2SOnPause = false;
 
 const unsigned long SILENCE_WRITE_INTERVAL_MS = 4;
+const unsigned long BUTTON_DEBOUNCE_MS = 35;
+const unsigned long BUTTON_COOLDOWN_MS = 1200;
+
+bool buttonLastReading = false;
+bool buttonStableState = false;
+unsigned long buttonLastChangeMs = 0;
+unsigned long buttonLastActionMs = 0;
 
 const double FFT_NOISE_FLOOR = 180.0;
 const double FFT_MAX_LEVEL = 22000.0;
@@ -105,23 +115,36 @@ const double MAX_VOLUME_GAIN = 0.95;
 // Per-column weighting to compensate for narrow low-frequency bins and
 // naturally lower bass-bin energy in this FFT resolution.
 const double BAND_EQ[WIDTH] = {
-  2.8, 2.4, 2.1, 1.8, 1.55, 1.35, 1.18, 1.05, 0.98, 0.92, 0.88, 0.84
+  1.55, 1.38, 1.24, 1.12, 1.06, 1.02, 1.00, 1.03, 1.08, 1.14, 1.20, 1.26
 };
 
 // Lift the right-side high-frequency columns so highs show more lit LEDs.
 const double HIGH_LED_BOOST[WIDTH] = {
-  1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.12, 1.55, 1.85, 2.10, 2.35, 1.85
+  1.00, 1.00, 1.00, 1.00, 1.02, 1.05, 1.08, 1.20, 1.70, 1.70, 1.24, 1.18
 };
 
 int16_t silenceBuffer[256] = {0};
 
 const int freqBins[WIDTH + 1] = {
   // WIDTH is 12, so we need 13 edges; keep them monotonic and <= SAMPLES/2.
-  2, 3, 4, 6, 8, 12, 18, 26, 38, 54, 74, 100, 128
+  2, 4, 6, 9, 13, 18, 25, 34, 46, 62, 82, 106, 128
 };
 
 void renderSoundMode();
+void renderBlank();
+void renderConnectionAnimation();
 void overlayHighColumnMarkers();
+void restartBluetoothReceiver();
+void handleBluetoothResetButton(unsigned long now);
+
+void onConnectionStateChanged(esp_a2d_connection_state_t state, void* ptr) {
+  (void)ptr;
+  btConnectionState = state;
+
+  if (state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
+    connectionPulse = 0;
+  }
+}
 
 void onAudioStateChanged(esp_a2d_audio_state_t state, void* ptr) {
   (void)ptr;
@@ -134,6 +157,10 @@ void onAudioStateChanged(esp_a2d_audio_state_t state, void* ptr) {
              state == ESP_A2D_AUDIO_STATE_STOPPED) {
     audioStreamActive = false;
     holdI2SOnPause = true;
+    for (int i = 0; i < WIDTH; i++) {
+      ledLevels[i] = 0;
+      peaks[i] = 0;
+    }
   }
 }
 
@@ -146,6 +173,46 @@ void applyToneControls() {
   ledcWrite(GAIN_PWM_PIN, toneControls.gain);
   ledcWrite(BASS_PWM_PIN, toneControls.bass);
   ledcWrite(TREBLE_PWM_PIN, toneControls.treble);
+}
+
+void restartBluetoothReceiver() {
+  // Drop the current A2DP session and immediately return to discoverable mode.
+  a2dp_sink.end(false);
+  delay(150);
+
+  a2dp_sink.set_default_bt_mode(ESP_BT_MODE_BTDM);
+  a2dp_sink.set_auto_reconnect(false);
+  a2dp_sink.set_on_connection_state_changed(onConnectionStateChanged);
+  a2dp_sink.set_on_audio_state_changed(onAudioStateChanged);
+  a2dp_sink.start(A2DP_DEVICE_NAME);
+  a2dp_sink.set_stream_reader(audioCallback);
+
+  btConnectionState = ESP_A2D_CONNECTION_STATE_DISCONNECTED;
+  audioStreamActive = false;
+  holdI2SOnPause = true;
+  i2s.write((uint8_t*)silenceBuffer, sizeof(silenceBuffer));
+  lastSilenceWriteMs = millis();
+  connectionPulse = 0;
+}
+
+void handleBluetoothResetButton(unsigned long now) {
+  // Use internal pull-up and wire button to GND (active-low press).
+  bool pressed = digitalRead(BT_RESET_BUTTON_PIN) == LOW;
+
+  if (pressed != buttonLastReading) {
+    buttonLastReading = pressed;
+    buttonLastChangeMs = now;
+  }
+
+  if ((now - buttonLastChangeMs) >= BUTTON_DEBOUNCE_MS &&
+      pressed != buttonStableState) {
+    buttonStableState = pressed;
+
+    if (buttonStableState && (now - buttonLastActionMs) >= BUTTON_COOLDOWN_MS) {
+      buttonLastActionMs = now;
+      restartBluetoothReceiver();
+    }
+  }
 }
 
 int XY(int x, int y) {
@@ -249,11 +316,16 @@ void processFFTData() {
     int startBin = freqBins[x];
     int endBin = freqBins[x + 1];
     int bandWidth = endBin - startBin;
-    double value = 0;
+    double sum = 0;
+    double peak = 0;
     for (int j = startBin; j < endBin; j++) {
-      value += vReal[j];
+      sum += vReal[j];
+      if (vReal[j] > peak) {
+        peak = vReal[j];
+      }
     }
-    value /= max(1, bandWidth);
+
+    double value = (sum / max(1, bandWidth)) * 0.72 + (peak / sqrt(static_cast<double>(max(1, bandWidth)))) * 0.28;
     value *= BAND_EQ[x];
     value *= volumeGain;
 
@@ -266,8 +338,12 @@ void processFFTData() {
     target *= HIGH_LED_BOOST[x];
     target = min((double)HEIGHT, target);
 
+    if (x >= 4 && x <= 10 && value > FFT_NOISE_FLOOR * 0.12 && target < 0.50) {
+      target = 0.50;
+    }
+
     // Keep 8th..11th columns (1-based) visible at moderate listening volume.
-    if (x >= 7 && x <= 10 && value > FFT_NOISE_FLOOR * 0.25 && target < 0.60) {
+    if (x >= 7 && x <= 10 && value > FFT_NOISE_FLOOR * 0.16 && target < 0.60) {
       target = 0.60;
     }
 
@@ -402,6 +478,45 @@ void renderSoundMode() {
   }
 }
 
+void renderBlank() {
+  for (int i = 0; i < NUMPIXELS; i++) {
+    pixels.setPixelColor(i, 0);
+  }
+  pixels.show();
+}
+
+void renderConnectionAnimation() {
+  const int travel = max(1, WIDTH - 1);
+  const int period = travel * 2;
+  const int phase = (connectionPulse / 2) % period;
+
+  int displaySweepX = phase;
+  bool movingRight = true;
+  if (phase >= travel) {
+    displaySweepX = period - phase;
+    movingRight = false;
+  }
+
+  int tailX = movingRight ? (displaySweepX - 1) : (displaySweepX + 1);
+  uint32_t mainBlue = pixels.Color(20, 20, 255);
+  uint32_t tailBlue = pixels.Color(0, 0, 70);
+
+  for (int x = 0; x < WIDTH; x++) {
+    for (int y = 0; y < HEIGHT; y++) {
+      uint32_t color = 0;
+      if (x == displaySweepX) {
+        color = mainBlue;
+      } else if (x == tailX && tailX >= 0 && tailX < WIDTH) {
+        color = tailBlue;
+      }
+      pixels.setPixelColor(XY(x, y), color);
+    }
+  }
+
+  pixels.show();
+  connectionPulse++;
+}
+
 void renderStaticSolidColor() {
   uint32_t color = pixels.Color(r, g, b);
   for (int i = 0; i < NUMPIXELS; i++) {
@@ -462,6 +577,8 @@ void setup() {
   pixels.setBrightness(80);
   pixels.show();
 
+  pinMode(BT_RESET_BUTTON_PIN, INPUT_PULLUP);
+
   configurePwmChannel(GAIN_PWM_PIN, GAIN_PWM_CHANNEL);
   configurePwmChannel(BASS_PWM_PIN, BASS_PWM_CHANNEL);
   configurePwmChannel(TREBLE_PWM_PIN, TREBLE_PWM_CHANNEL);
@@ -475,6 +592,7 @@ void setup() {
   i2s.begin(cfg);
 
   a2dp_sink.set_default_bt_mode(ESP_BT_MODE_BTDM);
+  a2dp_sink.set_on_connection_state_changed(onConnectionStateChanged);
   a2dp_sink.set_on_audio_state_changed(onAudioStateChanged);
   a2dp_sink.start(A2DP_DEVICE_NAME);
   a2dp_sink.set_stream_reader(audioCallback);
@@ -504,6 +622,8 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
+  handleBluetoothResetButton(now);
+
   if (!deviceConnected && oldDeviceConnected) {
     oldDeviceConnected = deviceConnected;
   }
@@ -529,6 +649,18 @@ void loop() {
       (now - lastSilenceWriteMs) >= SILENCE_WRITE_INTERVAL_MS) {
     i2s.write((uint8_t*)silenceBuffer, sizeof(silenceBuffer));
     lastSilenceWriteMs = now;
+  }
+
+  if (btConnectionState != ESP_A2D_CONNECTION_STATE_CONNECTED) {
+    renderConnectionAnimation();
+    delay(20);
+    return;
+  }
+
+  if (!audioStreamActive) {
+    renderBlank();
+    delay(20);
+    return;
   }
 
   if (category == 1) {

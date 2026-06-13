@@ -8,20 +8,20 @@ English and French quick-start for:
 
 ### Project Structure
 
-- ESP32 firmware (main): `esp32_receiver.ino`
+- ESP32 firmware (main): `esp32_receiver/`
 - Flutter app: `esp32_controller/`
 - Share-ready APK folder: `esp32_controller/releases/`
 
 ### Flash The Correct ESP32 Code
 
-Use `esp32_receiver.ino` for the full PartyBox receiver/controller behavior.
+Use the `esp32_receiver/` folder for the full PartyBox receiver/controller behavior.
 
 1. Install Arduino IDE 2.x.
 2. Install ESP32 board support:
 	- Arduino IDE -> Preferences -> Additional Boards Manager URLs:
 	  `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`
 	- Boards Manager: install `esp32` by Espressif.
-3. Open `esp32_receiver.ino`.
+3. Open the `esp32_receiver/` folder in Arduino IDE (File -> Open -> select the folder).
 4. Select your board/port (typically `ESP32 Dev Module`).
 5. Install required libraries (Library Manager):
 	- `ESP32-A2DP`
@@ -77,20 +77,20 @@ For a standalone install handout, see:
 
 ### Structure Du Projet
 
-- Firmware ESP32 (principal): `esp32_receiver.ino`
+- Firmware ESP32 (principal): `esp32_receiver/`
 - Application Flutter: `esp32_controller/`
 - Dossier APK pret a partager: `esp32_controller/releases/`
 
 ### Flasher Le Bon Code ESP32
 
-Utilisez `esp32_receiver.ino` pour le comportement complet du recepteur/controller PartyBox.
+Utilisez le dossier `esp32_receiver/` pour le comportement complet du recepteur/controller PartyBox.
 
 1. Installez Arduino IDE 2.x.
 2. Installez le support de carte ESP32:
 	- Arduino IDE -> Preferences -> Additional Boards Manager URLs:
 	  `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`
 	- Boards Manager: installez `esp32` par Espressif.
-3. Ouvrez `esp32_receiver.ino`.
+3. Ouvrez le dossier `esp32_receiver/` dans Arduino IDE (Fichier -> Ouvrir -> selectionnez le dossier).
 4. Selectionnez la carte et le port (souvent `ESP32 Dev Module`).
 5. Installez les bibliotheques requises (Library Manager):
 	- `ESP32-A2DP`
